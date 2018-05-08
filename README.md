@@ -12,9 +12,22 @@ An implementation of the paper "Estimating Gait Normality Index based on Point C
 * Please download the [histogram data](http://www.iro.umontreal.ca/~labimage/GaitDataset) and put the npz file into the folder **dataset**
 
 ## Usage
+Process default training and test sets
 ```
 python3 main.py
 ```
+Specify test subject for leave-one-out cross-validation and save results
+```
+python3 main.py -l 0 -f results.csv
+```
+* -l: index of test subject (0 to 8 for 9 subjects in DIRO gait dataset)
+* -f: file for saving results
+
+Test subject | Segment length | AUCs of (6 models and the average score)
+:---: | ---: | :---:
+ 0 |    1 | AUC values
+ 0 |  120 | AUC values
+ 0 | 1200 | AUC values
 
 ## Example of output
 Default training and test sets
