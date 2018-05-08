@@ -7,40 +7,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL']='2'
 import numpy as np
 import tensorflow as tf
 
+import argparse, sys
+
 from utils import *
 from ops import *
-
-'''============== DATA REGION ==============='''
-loaded = np.load('dataset/DIRO_normalized_hists.npz')
-data = loaded['data']
-n_subject, n_gait, n_frame = data.shape[:3]
-separation = loaded['split']
-training_subjects = np.where(separation == 'train')[0]
-test_subjects = np.where(separation == 'test')[0]
-
-##for leave-one-out ONLY
-#test_subjects = [0]
-#training_subjects = np.setdiff1d(list(range(n_subject)), test_subjects)
-
-print('training subjects: ' + str(training_subjects))
-
-training_img_normal = data[training_subjects, 0]
-test_img_normal = data[test_subjects, 0]
-test_img_abnormal = data[test_subjects, 1:]
-
-'''flatten data to 2D matrix'''
-training_img_normal = training_img_normal.reshape((-1,256))
-test_img_normal = test_img_normal.reshape((-1,256))
-test_img_abnormal = test_img_abnormal.reshape((-1,256))
-
-print('data shape:')
-print(training_img_normal.shape)
-print(test_img_normal.shape)
-print(test_img_abnormal.shape)
-print('')
-
-'''============= MODEL REGION ================'''
-tf.reset_default_graph()
 
 xavier = True
 leaky_param = 0.1
@@ -128,103 +98,158 @@ def ae4_lrelu_drop(X, p_keep_drop):
          return h7, tf.nn.l2_loss(w0) + tf.nn.l2_loss(w1) + tf.nn.l2_loss(w2) + tf.nn.l2_loss(w3) + tf.nn.l2_loss(w4) + tf.nn.l2_loss(w5) \
                 + tf.nn.l2_loss(w6) + tf.nn.l2_loss(w7)
     
+def main(argv):
+    '''usage: python3 main.py -l 0 -f results.csv'''
+    parser = argparse.ArgumentParser(description = 'cylindrical histogram AE')
+    parser.add_argument('-l', '--l1o', help = 'leave-one-out', default = -1)
+    parser.add_argument('-f', '--file', help = 'file saving leave-one-out results', default = None)
+    args = vars(parser.parse_args())
+    l1o = int(args['l1o'])
+    result_file = args['file']
+    '''============== DATA REGION ==============='''
+    loaded = np.load('dataset/DIRO_normalized_hists.npz')
+    data = loaded['data']
+    n_subject, n_gait, n_frame = data.shape[:3]
+    if l1o < 0 or l1o >= n_subject:  
+        separation = loaded['split']
+        training_subjects = np.where(separation == 'train')[0]
+        test_subjects = np.where(separation == 'test')[0]
+    else:
+        test_subjects = [l1o]
+        training_subjects = np.setdiff1d(list(range(n_subject)), test_subjects)
 
-X = tf.placeholder(tf.float32, shape=[None, 256])
-prob_dropout = tf.placeholder_with_default(1.0, shape=()) #for dropout
+    print('training subjects: ' + str(training_subjects))
 
-X_ae4_s, l2reg_ae4_s = ae4_sigmoid_nodrop(X)
-X_ae4_sd, l2reg_ae4_sd = ae4_sigmoid_drop(X, prob_dropout)
-X_ae4_t, l2reg_ae4_t = ae4_tanh_nodrop(X)
-X_ae4_td, l2reg_ae4_td = ae4_tanh_drop(X, prob_dropout)
-X_ae4_l, l2reg_ae4_l = ae4_lrelu_nodrop(X)
-X_ae4_ld, l2reg_ae4_ld = ae4_lrelu_drop(X, prob_dropout)
+    training_img_normal = data[training_subjects, 0]
+    test_img_normal = data[test_subjects, 0]
+    test_img_abnormal = data[test_subjects, 1:]
 
-'''loss function'''
-diff_ae4_s = X_ae4_s - X
-loss_ae4_s = tf.reduce_mean(diff_ae4_s**2) + l2_lambda * l2reg_ae4_s
-score_ae4_s = tf.reduce_mean(diff_ae4_s**2, axis = 1)
+    '''flatten data to 2D matrix'''
+    training_img_normal = training_img_normal.reshape((-1,256))
+    test_img_normal = test_img_normal.reshape((-1,256))
+    test_img_abnormal = test_img_abnormal.reshape((-1,256))
 
-diff_ae4_sd = X_ae4_sd - X
-loss_ae4_sd = tf.reduce_mean(diff_ae4_sd**2) + l2_lambda * l2reg_ae4_sd
-score_ae4_sd = tf.reduce_mean(diff_ae4_sd**2, axis = 1)
-
-diff_ae4_t = X_ae4_t - X
-loss_ae4_t = tf.reduce_mean(diff_ae4_t**2) + l2_lambda * l2reg_ae4_t
-score_ae4_t = tf.reduce_mean(diff_ae4_t**2, axis = 1)
-
-diff_ae4_td = X_ae4_td - X
-loss_ae4_td = tf.reduce_mean(diff_ae4_td**2) + l2_lambda * l2reg_ae4_td
-score_ae4_td = tf.reduce_mean(diff_ae4_td**2, axis = 1)
-
-diff_ae4_l = X_ae4_l - X
-loss_ae4_l = tf.reduce_mean(diff_ae4_l**2) + l2_lambda * l2reg_ae4_l
-score_ae4_l = tf.reduce_mean(diff_ae4_l**2, axis = 1)
-
-diff_ae4_ld = X_ae4_ld - X
-loss_ae4_ld = tf.reduce_mean(diff_ae4_ld**2) + l2_lambda * l2reg_ae4_ld
-score_ae4_ld = tf.reduce_mean(diff_ae4_ld**2, axis = 1)
-
-solver_ae4_s = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_s').minimize(loss_ae4_s)
-solver_ae4_sd = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_sd').minimize(loss_ae4_sd)
-solver_ae4_t = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_t').minimize(loss_ae4_t)
-solver_ae4_td = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_td').minimize(loss_ae4_td)
-solver_ae4_l = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_l').minimize(loss_ae4_l)
-solver_ae4_ld = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_ld').minimize(loss_ae4_ld)
-
-with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-    '''training'''
-    for i in range(max_epoch):
-        indices = shuffle_draw_batch(training_img_normal.shape[0], batch_size)
-        for idx in indices:
-            _, val_loss_ae4_s = sess.run([solver_ae4_s, loss_ae4_s], feed_dict={X: training_img_normal[idx]})
-            _, val_loss_ae4_sd = sess.run([solver_ae4_sd, loss_ae4_sd], feed_dict={X: training_img_normal[idx], prob_dropout: p_keep_dropout_const})
-            _, val_loss_ae4_t = sess.run([solver_ae4_t, loss_ae4_t], feed_dict={X: training_img_normal[idx]})
-            _, val_loss_ae4_td = sess.run([solver_ae4_td, loss_ae4_td], feed_dict={X: training_img_normal[idx], prob_dropout: p_keep_dropout_const})
-            _, val_loss_ae4_l = sess.run([solver_ae4_l, loss_ae4_l], feed_dict={X: training_img_normal[idx]})
-            _, val_loss_ae4_ld = sess.run([solver_ae4_ld, loss_ae4_ld], feed_dict={X: training_img_normal[idx], prob_dropout: p_keep_dropout_const})
-        if (i+1) % 100 == 0:
-            print('epoch %3d: sigmoid = (%.3f, %.3f), tanh = (%.3f, %.3f), lrelu = (%.3f, %.3f)' % \
-                  (i+1, val_loss_ae4_s, val_loss_ae4_sd, val_loss_ae4_t, val_loss_ae4_td, val_loss_ae4_l, val_loss_ae4_ld))
-    '''test on real data -> P(x = abnormal)'''
+    print('data shape:')
+    print(training_img_normal.shape)
+    print(test_img_normal.shape)
+    print(test_img_abnormal.shape)
     print('')
-    prob_abnormal_total = np.zeros(test_img_abnormal.shape[0])
-    prob_normal_total = np.zeros(test_img_normal.shape[0])
-    # sigmoid
-    prob_abnormal = score_ae4_s.eval({X: test_img_abnormal}).reshape(-1)
-    prob_normal = score_ae4_s.eval({X: test_img_normal}).reshape(-1)
-    results_s4 = assessment_full(prob_abnormal, prob_normal, title = 'sigmoid (4)')
-    prob_abnormal_total += prob_abnormal
-    prob_normal_total += prob_normal
-    # sigmoid + dropout
-    prob_abnormal = score_ae4_sd.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
-    prob_normal = score_ae4_sd.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
-    results_sd4 = assessment_full(prob_abnormal, prob_normal, title = 'sigmoid + drop (4)')
-    prob_abnormal_total += prob_abnormal
-    prob_normal_total += prob_normal
-    # tanh
-    prob_abnormal = score_ae4_t.eval({X: test_img_abnormal}).reshape(-1)
-    prob_normal = score_ae4_t.eval({X: test_img_normal}).reshape(-1)
-    results_t4 = assessment_full(prob_abnormal, prob_normal, title = 'tanh (4)')
-    prob_abnormal_total += prob_abnormal
-    prob_normal_total += prob_normal
-    # tanh + dropout
-    prob_abnormal = score_ae4_td.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
-    prob_normal = score_ae4_td.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
-    results_td4 = assessment_full(prob_abnormal, prob_normal, title = 'tanh + drop (4)')
-    prob_abnormal_total += prob_abnormal
-    prob_normal_total += prob_normal
-    # lrelu
-    prob_abnormal = score_ae4_l.eval({X: test_img_abnormal}).reshape(-1)
-    prob_normal = score_ae4_l.eval({X: test_img_normal}).reshape(-1)
-    results_l4 = assessment_full(prob_abnormal, prob_normal, title = 'lrelu (4)')
-    prob_abnormal_total += prob_abnormal
-    prob_normal_total += prob_normal
-    # lrelu + dropout
-    prob_abnormal = score_ae4_ld.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
-    prob_normal = score_ae4_ld.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
-    results_ld4 = assessment_full(prob_abnormal, prob_normal, title = 'lrelu + drop (4)')
-    prob_abnormal_total += prob_abnormal
-    prob_normal_total += prob_normal
-    # combination of 6 models
-    results_combine = assessment_full(prob_abnormal_total, prob_normal_total, title = 'combination (4)')
+
+    '''============= MODEL REGION ================'''
+    tf.reset_default_graph()
+
+    
+
+    X = tf.placeholder(tf.float32, shape=[None, 256])
+    prob_dropout = tf.placeholder_with_default(1.0, shape=()) #for dropout
+
+    X_ae4_s, l2reg_ae4_s = ae4_sigmoid_nodrop(X)
+    X_ae4_sd, l2reg_ae4_sd = ae4_sigmoid_drop(X, prob_dropout)
+    X_ae4_t, l2reg_ae4_t = ae4_tanh_nodrop(X)
+    X_ae4_td, l2reg_ae4_td = ae4_tanh_drop(X, prob_dropout)
+    X_ae4_l, l2reg_ae4_l = ae4_lrelu_nodrop(X)
+    X_ae4_ld, l2reg_ae4_ld = ae4_lrelu_drop(X, prob_dropout)
+
+    '''loss function'''
+    diff_ae4_s = X_ae4_s - X
+    loss_ae4_s = tf.reduce_mean(diff_ae4_s**2) + l2_lambda * l2reg_ae4_s
+    score_ae4_s = tf.reduce_mean(diff_ae4_s**2, axis = 1)
+
+    diff_ae4_sd = X_ae4_sd - X
+    loss_ae4_sd = tf.reduce_mean(diff_ae4_sd**2) + l2_lambda * l2reg_ae4_sd
+    score_ae4_sd = tf.reduce_mean(diff_ae4_sd**2, axis = 1)
+
+    diff_ae4_t = X_ae4_t - X
+    loss_ae4_t = tf.reduce_mean(diff_ae4_t**2) + l2_lambda * l2reg_ae4_t
+    score_ae4_t = tf.reduce_mean(diff_ae4_t**2, axis = 1)
+
+    diff_ae4_td = X_ae4_td - X
+    loss_ae4_td = tf.reduce_mean(diff_ae4_td**2) + l2_lambda * l2reg_ae4_td
+    score_ae4_td = tf.reduce_mean(diff_ae4_td**2, axis = 1)
+
+    diff_ae4_l = X_ae4_l - X
+    loss_ae4_l = tf.reduce_mean(diff_ae4_l**2) + l2_lambda * l2reg_ae4_l
+    score_ae4_l = tf.reduce_mean(diff_ae4_l**2, axis = 1)
+
+    diff_ae4_ld = X_ae4_ld - X
+    loss_ae4_ld = tf.reduce_mean(diff_ae4_ld**2) + l2_lambda * l2reg_ae4_ld
+    score_ae4_ld = tf.reduce_mean(diff_ae4_ld**2, axis = 1)
+
+    solver_ae4_s = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_s').minimize(loss_ae4_s)
+    solver_ae4_sd = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_sd').minimize(loss_ae4_sd)
+    solver_ae4_t = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_t').minimize(loss_ae4_t)
+    solver_ae4_td = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_td').minimize(loss_ae4_td)
+    solver_ae4_l = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_l').minimize(loss_ae4_l)
+    solver_ae4_ld = tf.train.RMSPropOptimizer(learning_rate, momentum = 0.9, name = 'solver_ae4_ld').minimize(loss_ae4_ld)
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        '''training'''
+        for i in range(max_epoch):
+            indices = shuffle_draw_batch(training_img_normal.shape[0], batch_size)
+            for idx in indices:
+                _, val_loss_ae4_s = sess.run([solver_ae4_s, loss_ae4_s], feed_dict={X: training_img_normal[idx]})
+                _, val_loss_ae4_sd = sess.run([solver_ae4_sd, loss_ae4_sd], feed_dict={X: training_img_normal[idx], prob_dropout: p_keep_dropout_const})
+                _, val_loss_ae4_t = sess.run([solver_ae4_t, loss_ae4_t], feed_dict={X: training_img_normal[idx]})
+                _, val_loss_ae4_td = sess.run([solver_ae4_td, loss_ae4_td], feed_dict={X: training_img_normal[idx], prob_dropout: p_keep_dropout_const})
+                _, val_loss_ae4_l = sess.run([solver_ae4_l, loss_ae4_l], feed_dict={X: training_img_normal[idx]})
+                _, val_loss_ae4_ld = sess.run([solver_ae4_ld, loss_ae4_ld], feed_dict={X: training_img_normal[idx], prob_dropout: p_keep_dropout_const})
+            if (i+1) % 100 == 0:
+                print('epoch %3d: sigmoid = (%.3f, %.3f), tanh = (%.3f, %.3f), lrelu = (%.3f, %.3f)' % \
+                      (i+1, val_loss_ae4_s, val_loss_ae4_sd, val_loss_ae4_t, val_loss_ae4_td, val_loss_ae4_l, val_loss_ae4_ld))
+        '''test on real data -> P(x = abnormal)'''
+        seg_lens = [1, 120, 1200]
+        print('')
+        prob_abnormal_total = np.zeros(test_img_abnormal.shape[0])
+        prob_normal_total = np.zeros(test_img_normal.shape[0])
+        # sigmoid
+        prob_abnormal = score_ae4_s.eval({X: test_img_abnormal}).reshape(-1)
+        prob_normal = score_ae4_s.eval({X: test_img_normal}).reshape(-1)
+        results_s4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'sigmoid (4)')
+        prob_abnormal_total += prob_abnormal
+        prob_normal_total += prob_normal
+        # sigmoid + dropout
+        prob_abnormal = score_ae4_sd.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
+        prob_normal = score_ae4_sd.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
+        results_sd4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'sigmoid + drop (4)')
+        prob_abnormal_total += prob_abnormal
+        prob_normal_total += prob_normal
+        # tanh
+        prob_abnormal = score_ae4_t.eval({X: test_img_abnormal}).reshape(-1)
+        prob_normal = score_ae4_t.eval({X: test_img_normal}).reshape(-1)
+        results_t4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'tanh (4)')
+        prob_abnormal_total += prob_abnormal
+        prob_normal_total += prob_normal
+        # tanh + dropout
+        prob_abnormal = score_ae4_td.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
+        prob_normal = score_ae4_td.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
+        results_td4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'tanh + drop (4)')
+        prob_abnormal_total += prob_abnormal
+        prob_normal_total += prob_normal
+        # lrelu
+        prob_abnormal = score_ae4_l.eval({X: test_img_abnormal}).reshape(-1)
+        prob_normal = score_ae4_l.eval({X: test_img_normal}).reshape(-1)
+        results_l4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'lrelu (4)')
+        prob_abnormal_total += prob_abnormal
+        prob_normal_total += prob_normal
+        # lrelu + dropout
+        prob_abnormal = score_ae4_ld.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
+        prob_normal = score_ae4_ld.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
+        results_ld4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'lrelu + drop (4)')
+        prob_abnormal_total += prob_abnormal
+        prob_normal_total += prob_normal
+        # combination of 6 models
+        results_combine = assessment_full(prob_abnormal_total, prob_normal_total, seg_lens = seg_lens, title = 'combination (4)')
+        # save data for leave-one-out    
+        if result_file:
+            test_subjects_id = np.sum(np.array([test_subjects[i] * 10**(len(test_subjects)-1-i) for i in range(len(test_subjects))]))
+            test_subjects_id *= np.ones(len(seg_lens))
+            data_to_save = np.transpose(np.vstack((test_subjects_id, seg_lens, results_s4, results_sd4, results_t4, results_td4, results_l4, results_ld4, results_combine)))
+            if os.path.isfile(result_file):
+                loaded_data = np.loadtxt(result_file, delimiter = ',')
+                data_to_save = np.concatenate((loaded_data, data_to_save), axis = 0)
+            np.savetxt(result_file, data_to_save, delimiter = ',')
+            print('results saved!')
+        
+if __name__ == '__main__':
+    main(sys.argv)
