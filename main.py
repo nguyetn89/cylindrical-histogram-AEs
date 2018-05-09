@@ -246,7 +246,7 @@ def main(argv):
         # combination of 6 models
         results_combine = assessment_full(prob_abnormal_total, prob_normal_total, seg_lens = seg_lens, title = 'combination (4)')
         
-        # save data for leave-one-out    
+        # save data to file
         if result_file:
             test_subjects_id = np.sum(np.array([test_subjects[i] * 10**(len(test_subjects)-1-i) for i in range(len(test_subjects))]))
             test_subjects_id *= np.ones(len(seg_lens))
