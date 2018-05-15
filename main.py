@@ -138,8 +138,6 @@ def main(argv):
     '''============= MODEL REGION ================'''
     tf.reset_default_graph()
 
-    
-
     X = tf.placeholder(tf.float32, shape=[None, 256])
     prob_dropout = tf.placeholder_with_default(1.0, shape=()) #for dropout
 
@@ -202,45 +200,53 @@ def main(argv):
         print('')
         prob_abnormal_total = np.zeros(test_img_abnormal.shape[0])
         prob_normal_total = np.zeros(test_img_normal.shape[0])
+        
         # sigmoid
         prob_abnormal = score_ae4_s.eval({X: test_img_abnormal}).reshape(-1)
         prob_normal = score_ae4_s.eval({X: test_img_normal}).reshape(-1)
         results_s4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'sigmoid (4)')
         prob_abnormal_total += prob_abnormal
         prob_normal_total += prob_normal
+        
         # sigmoid + dropout
         prob_abnormal = score_ae4_sd.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
         prob_normal = score_ae4_sd.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
         results_sd4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'sigmoid + drop (4)')
         prob_abnormal_total += prob_abnormal
         prob_normal_total += prob_normal
+        
         # tanh
         prob_abnormal = score_ae4_t.eval({X: test_img_abnormal}).reshape(-1)
         prob_normal = score_ae4_t.eval({X: test_img_normal}).reshape(-1)
         results_t4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'tanh (4)')
         prob_abnormal_total += prob_abnormal
         prob_normal_total += prob_normal
+        
         # tanh + dropout
         prob_abnormal = score_ae4_td.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
         prob_normal = score_ae4_td.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
         results_td4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'tanh + drop (4)')
         prob_abnormal_total += prob_abnormal
         prob_normal_total += prob_normal
+        
         # lrelu
         prob_abnormal = score_ae4_l.eval({X: test_img_abnormal}).reshape(-1)
         prob_normal = score_ae4_l.eval({X: test_img_normal}).reshape(-1)
         results_l4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'lrelu (4)')
         prob_abnormal_total += prob_abnormal
         prob_normal_total += prob_normal
+        
         # lrelu + dropout
         prob_abnormal = score_ae4_ld.eval({X: test_img_abnormal, prob_dropout: 1.0}).reshape(-1)
         prob_normal = score_ae4_ld.eval({X: test_img_normal, prob_dropout: 1.0}).reshape(-1)
         results_ld4 = assessment_full(prob_abnormal, prob_normal, seg_lens = seg_lens, title = 'lrelu + drop (4)')
         prob_abnormal_total += prob_abnormal
         prob_normal_total += prob_normal
+        
         # combination of 6 models
         results_combine = assessment_full(prob_abnormal_total, prob_normal_total, seg_lens = seg_lens, title = 'combination (4)')
-        # save data for leave-one-out    
+        
+        # save data to file
         if result_file:
             test_subjects_id = np.sum(np.array([test_subjects[i] * 10**(len(test_subjects)-1-i) for i in range(len(test_subjects))]))
             test_subjects_id *= np.ones(len(seg_lens))
