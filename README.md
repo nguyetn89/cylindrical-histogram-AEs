@@ -1,5 +1,5 @@
 # cylindrical-histogram-AEs
-An implementation of the paper "Estimating Gait Normality Index based on Point Clouds using Deep Neural Network"
+An implementation of the paper [Estimating Gait Normality Index based on Point Clouds using Deep Neural Network](https://jivp-eurasipjournals.springeropen.com/articles/10.1186/s13640-019-0466-z)
 
 ## Requirements
 * Python
